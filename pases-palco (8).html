@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reservacion de Xolopass</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+</head>
+<body>
+<div id="app-root">
+  <style>
+    #app-root { font-family: var(--font-sans, sans-serif); background: linear-gradient(135deg, #B0202E 0%, #B0202E 42%, #1a1a1a 58%, #1a1a1a 100%); padding: 20px; border-radius: 16px; }
+    .app-title { font-size: 20px; font-weight: 500; margin: 0 0 16px; color: #fff; }
+    .legend { display: flex; gap: 16px; font-size: 12px; color: #eee; margin-bottom: 16px; }
+    .section-title { font-size: 14px; font-weight: 500; margin: 24px 0 10px; color: #fff; }
+    .card { background: var(--surface-2, #fff); border: 0.5px solid var(--border, #ddd); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 12px; }
+    .game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .game-title { font-size: 15px; font-weight: 500; margin: 0; }
+    .game-sub { font-size: 13px; color: var(--text-secondary, #666); margin: 2px 0 0; }
+    .pass-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+    .pass-cell { border-radius: var(--radius, 8px); padding: 10px 12px; border: 0.5px solid var(--border, #ddd); user-select: none; }
+    .pass-num { font-size: 13px; font-weight: 500; margin: 0 0 4px; }
+    .pass-status { font-size: 12px; margin: 0 0 6px; display: inline-block; }
+    .pass-status:active { transform: scale(0.97); }
+    .pass-fields { display: none; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .pass-fields.show { display: flex; }
+    .pass-fields input { width: 100%; font-size: 12px; height: 28px; box-sizing: border-box; }
+    .disponible { background: #EFEFED; border-color: #B5B3AC; }
+    .disponible .pass-num { color: #2C2C2A; }
+    .disponible .pass-status { color: #5F5E5A; }
+    .apartado { background: #F6DBDE; border-color: #B0202E; }
+    .apartado .pass-num { color: #6b1620; }
+    .apartado .pass-status { color: #8f2733; }
+    .en_uso { background: #1a1a1a; border-color: #000; }
+    .en_uso .pass-num { color: #fff; }
+    .en_uso .pass-status { color: #ddd; }
+    .btn { border: 0.5px solid rgba(255,255,255,0.6); background: rgba(255,255,255,0.1); color: #fff; border-radius: var(--radius, 8px); padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    .btn:hover { background: rgba(255,255,255,0.2); }
+    .top-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .top-bar input, .top-bar select { flex: 1; min-width: 120px; background: #fff; border-radius: var(--radius, 8px); }
+    .remove-x { font-size: 12px; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 6px; }
+    .empty { text-align: center; color: #eee; padding: 2rem 0; font-size: 14px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .section-title:first-child { margin-top: 0; }
+    .card.past { opacity: 0.75; }
+    .historial-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; table-layout: fixed; }
+    .historial-table th { text-align: left; font-weight: 500; color: var(--text-secondary, #666); padding: 6px 8px; border-bottom: 0.5px solid var(--border, #ddd); }
+    .historial-table td { padding: 6px 8px; border-bottom: 0.5px solid var(--border, #eee); }
+    .historial-table td.vacio { color: var(--text-muted, #999); }
+    .lock-badge { font-size: 11px; color: var(--text-secondary, #666); margin-left: 4px; }
+    .lock-btn { font-size: 11px; padding: 3px 8px; margin-top: 6px; width: 100%; background: var(--surface-1, #f5f5f5); color: var(--text-primary, #222); border-color: var(--border-strong, #ccc); }
+  </style>
+
+  <h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;">Calendario de pases del palco: seis pases por partido, con estado disponible, apartado o en uso</h2>
+
+  <p class="app-title">Reservacion de Xolopass</p>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#B5B3AC"></span>Disponible</span>
+    <span><span class="dot" style="background:#B0202E"></span>Apartado</span>
+    <span><span class="dot" style="background:#1a1a1a"></span>En uso</span>
+  </div>
+
+  <div id="games-list"></div>
+</div>
+
+<script>
+(function() {
+  const STATES = ['disponible', 'apartado', 'en_uso'];
+  const LABELS = { disponible: 'Disponible', apartado: 'Apartado', en_uso: 'En uso' };
+  // Pega aqui la URL que termina en /exec de tu implementacion de Apps Script
+  // (ver Code.gs -> instrucciones de instalacion).
+  const API_URL = 'PEGA_AQUI_TU_URL_DE_APPS_SCRIPT';
+  const PASSWORD = '1234';
+  let games = [];
+  let cargando = true;
+
+  function checkPassword() {
+    const intento = prompt('Escribe la contrasena para desbloquear:');
+    if (intento === null) return false;
+    if (intento !== PASSWORD) {
+      alert('Contrasena incorrecta.');
+      return false;
+    }
+    return true;
+  }
+
+  const SEED_GAMES = [
+    { jornada: '1', rival: 'Tigres', fecha: '2026-07-16', hora: '8 PM' },
+    { jornada: '2', rival: 'Leon', fecha: '2026-07-24', hora: '8 PM' },
+    { jornada: '4', rival: 'Cruz Azul', fecha: '2026-08-16', hora: '8 PM' },
+    { jornada: '6', rival: 'Pumas', fecha: '2026-08-28', hora: '8 PM' },
+    { jornada: '8', rival: 'Queretaro', fecha: '2026-09-11', hora: '8 PM' },
+    { jornada: '10', rival: 'Atlas', fecha: '2026-09-25', hora: '8 PM' },
+    { jornada: '12', rival: 'Puebla', fecha: '2026-10-16', hora: '8 PM' },
+    { jornada: '14', rival: 'Santos Laguna', fecha: '2026-10-25', hora: '8 PM' },
+    { jornada: '17', rival: 'Atlante', fecha: '2026-11-20', hora: '7 PM' }
+  ];
+
+  function uid() {
+    return 'g' + Date.now() + Math.floor(Math.random() * 1000);
+  }
+
+  function makePasses() {
+    const p = {};
+    for (let i = 1; i <= 6; i++) p[i] = { status: 'disponible', nombre: '', uso: '', invitadoDe: '', locked: false };
+    return p;
+  }
+
+  // Compatibilidad con datos guardados en el formato anterior (string simple)
+  function normalizePases(pases) {
+    const out = {};
+    for (let i = 1; i <= 6; i++) {
+      const val = pases ? pases[i] : null;
+      if (typeof val === 'string') {
+        out[i] = { status: val, nombre: '', uso: '', invitadoDe: '', locked: false };
+      } else if (val && typeof val === 'object') {
+        out[i] = { status: val.status || 'disponible', nombre: val.nombre || '', uso: val.uso || '', invitadoDe: val.invitadoDe || '', locked: !!val.locked };
+      } else {
+        out[i] = { status: 'disponible', nombre: '', uso: '', invitadoDe: '', locked: false };
+      }
+    }
+    return out;
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(API_URL, { cache: 'no-store' });
+      const data = await res.json();
+      games = Array.isArray(data) ? data : [];
+    } catch (e) {
+      games = [];
+    }
+    games.forEach(function(g) {
+      g.pases = normalizePases(g.pases);
+      if (g.jornada) g.jornada = g.jornada.replace(/^[Jj]/, '');
+    });
+    if (games.length === 0) {
+      games = SEED_GAMES.map(function(g) {
+        return { id: uid(), jornada: g.jornada, rival: g.rival, fecha: g.fecha, hora: g.hora, pases: makePasses() };
+      });
+      save();
+    } else if (autoActualizarEstatus()) {
+      save();
+    }
+    cargando = false;
+    render();
+  }
+
+  async function save() {
+    try {
+      const url = API_URL + '?action=save&data=' + encodeURIComponent(JSON.stringify(games));
+      await fetch(url, { cache: 'no-store' });
+    } catch (e) {
+      console.error('Error guardando en la hoja', e);
+    }
+  }
+
+  function autoActualizarEstatus() {
+    const hoy = new Date().toISOString().slice(0, 10);
+    let cambio = false;
+    games.forEach(function(g) {
+      if (!g.fecha || g.fecha > hoy) return;
+      Object.keys(g.pases).forEach(function(k) {
+        const info = g.pases[k];
+        if (info.status === 'apartado') {
+          info.status = 'en_uso';
+          cambio = true;
+        }
+      });
+    });
+    return cambio;
+  }
+
+  const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  function formatFecha(f) {
+    if (!f) return '';
+    const d = new Date(f + 'T00:00:00');
+    return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+  }
+
+  function renderGameCard(game, isPast) {
+    const card = document.createElement('div');
+    card.className = 'card' + (isPast ? ' past' : '');
+
+    const header = document.createElement('div');
+    header.className = 'game-header';
+    const tieneBloqueados = Object.values(game.pases).some(function(p) { return p.locked || p.status === 'en_uso'; });
+    header.innerHTML =
+      '<div><p class="game-title">' + (game.jornada ? escapeHtml(game.jornada) + ' - ' : '') + 'Xolos vs ' + escapeHtml(game.rival || 'Por definir') + '</p>' +
+      '<p class="game-sub">' + (game.fecha ? formatFecha(game.fecha) : 'Fecha por definir') + (game.hora ? ' - ' + escapeHtml(game.hora) : '') + '</p></div>' +
+      '<span class="remove-x" data-id="' + game.id + '" data-locked="' + (tieneBloqueados ? '1' : '0') + '" title="Eliminar partido"><i class="ti ti-trash" style="font-size:16px" aria-hidden="true"></i></span>';
+    card.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'pass-grid';
+
+    for (let i = 1; i <= 6; i++) {
+      const info = game.pases[i] || { status: 'disponible', nombre: '', uso: '', invitadoDe: '', locked: false };
+      const status = info.status;
+      const locked = status !== 'disponible' && info.locked;
+      const cell = document.createElement('div');
+      cell.className = 'pass-cell ' + status;
+      cell.dataset.gameId = game.id;
+      cell.dataset.passNum = i;
+
+      let toggleAttrs;
+      if (isPast) {
+        toggleAttrs = '';
+      } else if (locked) {
+        toggleAttrs = ' data-lock-toggle="1" data-game-id="' + game.id + '" data-pass-num="' + i + '" style="cursor:pointer;"';
+      } else {
+        toggleAttrs = ' data-toggle="1" data-game-id="' + game.id + '" data-pass-num="' + i + '" style="cursor:pointer;"';
+      }
+      const readonlyAttr = (isPast || locked || status === 'en_uso') ? ' readonly' : '';
+      const lockBadge = locked ? '<i class="ti ti-lock" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i>' : '';
+
+      let lockButton = '';
+      if (!isPast && status !== 'disponible') {
+        if (locked) {
+          lockButton = '<button class="btn lock-btn" data-lock-action="unlock" data-game-id="' + game.id + '" data-pass-num="' + i + '"><i class="ti ti-lock-open" style="font-size:13px;vertical-align:-2px;margin-right:3px" aria-hidden="true"></i>Desbloquear</button>';
+        } else {
+          lockButton = '<button class="btn lock-btn" data-lock-action="lock" data-game-id="' + game.id + '" data-pass-num="' + i + '"><i class="ti ti-lock" style="font-size:13px;vertical-align:-2px;margin-right:3px" aria-hidden="true"></i>Bloquear</button>';
+        }
+      }
+
+      cell.innerHTML =
+        '<p class="pass-num">Pase ' + i + '</p>' +
+        '<p class="pass-status"' + toggleAttrs + '>' + LABELS[status] + ' ' + lockBadge + '</p>' +
+        '<div class="pass-fields' + (status !== 'disponible' ? ' show' : '') + '">' +
+        '<input type="text" placeholder="Nombre de quien lo tiene" value="' + escapeHtml(info.nombre) + '" data-field="nombre" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
+        '<input type="text" placeholder="Area" value="' + escapeHtml(info.uso) + '" data-field="uso" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
+        '<input type="text" placeholder="Invitado de" value="' + escapeHtml(info.invitadoDe) + '" data-field="invitadoDe" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
+        lockButton +
+        '</div>';
+      grid.appendChild(cell);
+    }
+
+    card.appendChild(grid);
+    return card;
+  }
+
+  function renderHistorialTable(pasados) {
+    const rows = [];
+    pasados.forEach(function(g) {
+      for (let i = 1; i <= 6; i++) {
+        const info = g.pases[i] || { status: 'disponible', nombre: '', uso: '', invitadoDe: '' };
+        if (info.nombre || info.uso || info.invitadoDe) {
+          rows.push({
+            fecha: g.fecha ? formatFecha(g.fecha) : '',
+            partido: (g.jornada ? g.jornada + ' - ' : '') + 'Xolos vs ' + (g.rival || 'Por definir'),
+            pase: i,
+            nombre: info.nombre,
+            uso: info.uso,
+            invitadoDe: info.invitadoDe
+          });
+        }
+      }
+    });
+
+    if (rows.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = 'Ningun pase registrado con nombre en partidos pasados todavia.';
+      return p;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'historial-table';
+    let html = '<thead><tr><th>Fecha</th><th>Partido</th><th>Pase</th><th>Nombre</th><th>Area</th><th>Invitado de</th></tr></thead><tbody>';
+    rows.forEach(function(r) {
+      html += '<tr><td>' + escapeHtml(r.fecha) + '</td><td>' + escapeHtml(r.partido) + '</td><td>' + r.pase + '</td>' +
+        '<td' + (r.nombre ? '' : ' class="vacio"') + '>' + (escapeHtml(r.nombre) || '-') + '</td>' +
+        '<td' + (r.uso ? '' : ' class="vacio"') + '>' + (escapeHtml(r.uso) || '-') + '</td>' +
+        '<td' + (r.invitadoDe ? '' : ' class="vacio"') + '>' + (escapeHtml(r.invitadoDe) || '-') + '</td></tr>';
+    });
+    html += '</tbody>';
+    table.innerHTML = html;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'card';
+    wrapper.style.padding = '0.5rem 1rem';
+    wrapper.appendChild(table);
+    return wrapper;
+  }
+
+  function render() {
+    const list = document.getElementById('games-list');
+    list.innerHTML = '';
+
+    if (cargando) {
+      list.innerHTML = '<div class="empty">Cargando datos...</div>';
+      return;
+    }
+
+    if (games.length === 0) {
+      list.innerHTML = '<div class="empty">Aun no hay partidos agregados. Agrega el primero arriba.</div>';
+      return;
+    }
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const proximos = games.filter(function(g) { return !g.fecha || g.fecha >= hoy; })
+      .sort(function(a, b) { return (a.fecha || '').localeCompare(b.fecha || ''); });
+    const pasados = games.filter(function(g) { return g.fecha && g.fecha < hoy; })
+      .sort(function(a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); });
+
+    if (proximos.length > 0) {
+      const h = document.createElement('p');
+      h.className = 'section-title';
+      h.textContent = 'Proximos partidos';
+      list.appendChild(h);
+      proximos.forEach(function(g) { list.appendChild(renderGameCard(g, false)); });
+    }
+
+    if (pasados.length > 0) {
+      const h = document.createElement('p');
+      h.className = 'section-title';
+      h.textContent = 'Historial de partidos pasados';
+      list.appendChild(h);
+      list.appendChild(renderHistorialTable(pasados));
+      pasados.forEach(function(g) { list.appendChild(renderGameCard(g, true)); });
+    }
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  document.getElementById('games-list').addEventListener('click', function(e) {
+    const toggle = e.target.closest('[data-toggle]');
+    const lockToggle = e.target.closest('[data-lock-toggle]');
+    const lockAction = e.target.closest('[data-lock-action]');
+    const removeBtn = e.target.closest('.remove-x');
+
+    if (removeBtn) {
+      if (removeBtn.dataset.locked === '1' && !checkPassword()) return;
+      const id = removeBtn.dataset.id;
+      games = games.filter(function(g) { return g.id !== id; });
+      render();
+      save();
+      return;
+    }
+
+    if (lockAction) {
+      const gameId = lockAction.dataset.gameId;
+      const passNum = lockAction.dataset.passNum;
+      const game = games.find(function(g) { return g.id === gameId; });
+      if (!game) return;
+      const info = game.pases[passNum];
+      if (lockAction.dataset.lockAction === 'lock') {
+        info.locked = true;
+      } else {
+        if (!checkPassword()) return;
+        info.locked = false;
+      }
+      render();
+      save();
+      return;
+    }
+
+    if (lockToggle) {
+      if (!checkPassword()) return;
+      const gameId = lockToggle.dataset.gameId;
+      const passNum = lockToggle.dataset.passNum;
+      const game = games.find(function(g) { return g.id === gameId; });
+      if (!game) return;
+      const info = game.pases[passNum];
+      const nextStatus = info.status === 'disponible' ? 'apartado' : 'disponible';
+      info.status = nextStatus;
+      if (nextStatus === 'disponible') {
+        info.nombre = '';
+        info.uso = '';
+        info.invitadoDe = '';
+        info.locked = false;
+      }
+      render();
+      save();
+      return;
+    }
+
+    if (toggle) {
+      const gameId = toggle.dataset.gameId;
+      const passNum = toggle.dataset.passNum;
+      const game = games.find(function(g) { return g.id === gameId; });
+      if (!game) return;
+      const info = game.pases[passNum];
+      if (info.status === 'en_uso' && !checkPassword()) return;
+      const nextStatus = info.status === 'disponible' ? 'apartado' : 'disponible';
+      info.status = nextStatus;
+      if (nextStatus === 'disponible') {
+        info.nombre = '';
+        info.uso = '';
+        info.invitadoDe = '';
+        info.locked = false;
+      }
+      render();
+      save();
+    }
+  });
+
+  document.getElementById('games-list').addEventListener('change', function(e) {
+    const field = e.target.closest('[data-field]');
+    if (!field) return;
+    const gameId = field.dataset.gameId;
+    const passNum = field.dataset.passNum;
+    const game = games.find(function(g) { return g.id === gameId; });
+    if (!game) return;
+    game.pases[passNum][field.dataset.field] = field.value;
+    save();
+  });
+
+  load();
+
+  setInterval(function() {
+    const activo = document.activeElement;
+    const escribiendo = activo && document.getElementById('games-list').contains(activo);
+    if (!escribiendo) {
+      load();
+    }
+  }, 15000);
+})();
+</script>
+</body>
+</html>
