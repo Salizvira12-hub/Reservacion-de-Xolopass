@@ -68,8 +68,6 @@
 (function() {
   const STATES = ['disponible', 'apartado', 'en_uso'];
   const LABELS = { disponible: 'Disponible', apartado: 'Apartado', en_uso: 'En uso' };
-  // Pega aqui la URL que termina en /exec de tu implementacion de Apps Script
-  // (ver Code.gs -> instrucciones de instalacion).
   const API_URL = 'https://script.google.com/macros/s/AKfycbyji0c1RKv-aIY-FZE67Ny_Ort1KrgQgPi9ZfhoWL_TNTL2qKxNA_rCLY3f8s5nkM5T/exec';
   const PASSWORD = '1234';
   let games = [];
@@ -207,18 +205,16 @@
       cell.dataset.passNum = i;
 
       let toggleAttrs;
-      if (isPast) {
-        toggleAttrs = '';
-      } else if (locked) {
+      if (locked) {
         toggleAttrs = ' data-lock-toggle="1" data-game-id="' + game.id + '" data-pass-num="' + i + '" style="cursor:pointer;"';
       } else {
         toggleAttrs = ' data-toggle="1" data-game-id="' + game.id + '" data-pass-num="' + i + '" style="cursor:pointer;"';
       }
-      const readonlyAttr = (isPast || locked || status === 'en_uso') ? ' readonly' : '';
+      const readonlyAttr = (locked || status === 'en_uso') ? ' readonly' : '';
       const lockBadge = locked ? '<i class="ti ti-lock" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i>' : '';
 
       let lockButton = '';
-      if (!isPast && status !== 'disponible') {
+      if (status !== 'disponible') {
         if (locked) {
           lockButton = '<button class="btn lock-btn" data-lock-action="unlock" data-game-id="' + game.id + '" data-pass-num="' + i + '"><i class="ti ti-lock-open" style="font-size:13px;vertical-align:-2px;margin-right:3px" aria-hidden="true"></i>Desbloquear</button>';
         } else {
@@ -230,199 +226,4 @@
         '<p class="pass-num">Pase ' + i + '</p>' +
         '<p class="pass-status"' + toggleAttrs + '>' + LABELS[status] + ' ' + lockBadge + '</p>' +
         '<div class="pass-fields' + (status !== 'disponible' ? ' show' : '') + '">' +
-        '<input type="text" placeholder="Nombre de quien lo tiene" value="' + escapeHtml(info.nombre) + '" data-field="nombre" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
-        '<input type="text" placeholder="Area" value="' + escapeHtml(info.uso) + '" data-field="uso" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
-        '<input type="text" placeholder="Invitado de" value="' + escapeHtml(info.invitadoDe) + '" data-field="invitadoDe" data-game-id="' + game.id + '" data-pass-num="' + i + '"' + readonlyAttr + ' />' +
-        lockButton +
-        '</div>';
-      grid.appendChild(cell);
-    }
-
-    card.appendChild(grid);
-    return card;
-  }
-
-  function renderHistorialTable(pasados) {
-    const rows = [];
-    pasados.forEach(function(g) {
-      for (let i = 1; i <= 6; i++) {
-        const info = g.pases[i] || { status: 'disponible', nombre: '', uso: '', invitadoDe: '' };
-        if (info.nombre || info.uso || info.invitadoDe) {
-          rows.push({
-            fecha: g.fecha ? formatFecha(g.fecha) : '',
-            partido: (g.jornada ? g.jornada + ' - ' : '') + 'Xolos vs ' + (g.rival || 'Por definir'),
-            pase: i,
-            nombre: info.nombre,
-            uso: info.uso,
-            invitadoDe: info.invitadoDe
-          });
-        }
-      }
-    });
-
-    if (rows.length === 0) {
-      const p = document.createElement('p');
-      p.className = 'empty';
-      p.textContent = 'Ningun pase registrado con nombre en partidos pasados todavia.';
-      return p;
-    }
-
-    const table = document.createElement('table');
-    table.className = 'historial-table';
-    let html = '<thead><tr><th>Fecha</th><th>Partido</th><th>Pase</th><th>Nombre</th><th>Area</th><th>Invitado de</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
-      html += '<tr><td>' + escapeHtml(r.fecha) + '</td><td>' + escapeHtml(r.partido) + '</td><td>' + r.pase + '</td>' +
-        '<td' + (r.nombre ? '' : ' class="vacio"') + '>' + (escapeHtml(r.nombre) || '-') + '</td>' +
-        '<td' + (r.uso ? '' : ' class="vacio"') + '>' + (escapeHtml(r.uso) || '-') + '</td>' +
-        '<td' + (r.invitadoDe ? '' : ' class="vacio"') + '>' + (escapeHtml(r.invitadoDe) || '-') + '</td></tr>';
-    });
-    html += '</tbody>';
-    table.innerHTML = html;
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'card';
-    wrapper.style.padding = '0.5rem 1rem';
-    wrapper.appendChild(table);
-    return wrapper;
-  }
-
-  function render() {
-    const list = document.getElementById('games-list');
-    list.innerHTML = '';
-
-    if (cargando) {
-      list.innerHTML = '<div class="empty">Cargando datos...</div>';
-      return;
-    }
-
-    if (games.length === 0) {
-      list.innerHTML = '<div class="empty">Aun no hay partidos agregados. Agrega el primero arriba.</div>';
-      return;
-    }
-
-    const hoy = new Date().toISOString().slice(0, 10);
-    const proximos = games.filter(function(g) { return !g.fecha || g.fecha >= hoy; })
-      .sort(function(a, b) { return (a.fecha || '').localeCompare(b.fecha || ''); });
-    const pasados = games.filter(function(g) { return g.fecha && g.fecha < hoy; })
-      .sort(function(a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); });
-
-    if (proximos.length > 0) {
-      const h = document.createElement('p');
-      h.className = 'section-title';
-      h.textContent = 'Proximos partidos';
-      list.appendChild(h);
-      proximos.forEach(function(g) { list.appendChild(renderGameCard(g, false)); });
-    }
-
-    if (pasados.length > 0) {
-      const h = document.createElement('p');
-      h.className = 'section-title';
-      h.textContent = 'Historial de partidos pasados';
-      list.appendChild(h);
-      list.appendChild(renderHistorialTable(pasados));
-      pasados.forEach(function(g) { list.appendChild(renderGameCard(g, true)); });
-    }
-  }
-
-  function escapeHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  document.getElementById('games-list').addEventListener('click', function(e) {
-    const toggle = e.target.closest('[data-toggle]');
-    const lockToggle = e.target.closest('[data-lock-toggle]');
-    const lockAction = e.target.closest('[data-lock-action]');
-    const removeBtn = e.target.closest('.remove-x');
-
-    if (removeBtn) {
-      if (removeBtn.dataset.locked === '1' && !checkPassword()) return;
-      const id = removeBtn.dataset.id;
-      games = games.filter(function(g) { return g.id !== id; });
-      render();
-      save();
-      return;
-    }
-
-    if (lockAction) {
-      const gameId = lockAction.dataset.gameId;
-      const passNum = lockAction.dataset.passNum;
-      const game = games.find(function(g) { return g.id === gameId; });
-      if (!game) return;
-      const info = game.pases[passNum];
-      if (lockAction.dataset.lockAction === 'lock') {
-        info.locked = true;
-      } else {
-        if (!checkPassword()) return;
-        info.locked = false;
-      }
-      render();
-      save();
-      return;
-    }
-
-    if (lockToggle) {
-      if (!checkPassword()) return;
-      const gameId = lockToggle.dataset.gameId;
-      const passNum = lockToggle.dataset.passNum;
-      const game = games.find(function(g) { return g.id === gameId; });
-      if (!game) return;
-      const info = game.pases[passNum];
-      const nextStatus = info.status === 'disponible' ? 'apartado' : 'disponible';
-      info.status = nextStatus;
-      if (nextStatus === 'disponible') {
-        info.nombre = '';
-        info.uso = '';
-        info.invitadoDe = '';
-        info.locked = false;
-      }
-      render();
-      save();
-      return;
-    }
-
-    if (toggle) {
-      const gameId = toggle.dataset.gameId;
-      const passNum = toggle.dataset.passNum;
-      const game = games.find(function(g) { return g.id === gameId; });
-      if (!game) return;
-      const info = game.pases[passNum];
-      if (info.status === 'en_uso' && !checkPassword()) return;
-      const nextStatus = info.status === 'disponible' ? 'apartado' : 'disponible';
-      info.status = nextStatus;
-      if (nextStatus === 'disponible') {
-        info.nombre = '';
-        info.uso = '';
-        info.invitadoDe = '';
-        info.locked = false;
-      }
-      render();
-      save();
-    }
-  });
-
-  document.getElementById('games-list').addEventListener('change', function(e) {
-    const field = e.target.closest('[data-field]');
-    if (!field) return;
-    const gameId = field.dataset.gameId;
-    const passNum = field.dataset.passNum;
-    const game = games.find(function(g) { return g.id === gameId; });
-    if (!game) return;
-    game.pases[passNum][field.dataset.field] = field.value;
-    save();
-  });
-
-  load();
-
-  setInterval(function() {
-    const activo = document.activeElement;
-    const escribiendo = activo && document.getElementById('games-list').contains(activo);
-    if (!escribiendo) {
-      load();
-    }
-  }, 15000);
-})();
-</script>
-</body>
-</html>
+        '<input type="text" placeholder="Nombre de quien lo tiene" value="' + escapeHtml(info.nombre) + '"
